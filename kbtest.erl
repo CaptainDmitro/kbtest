@@ -1,6 +1,6 @@
 -module(kbtest).
 
--export([current_state/0, count_codelines/1, list_files/1]).
+-export([current_state/0, count_codelines/1]).
 
 -export([start/0, stop/0]).
 
