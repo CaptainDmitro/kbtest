@@ -1,6 +1,6 @@
 -module(kbtest).
 
--export([current_state/0, count_codelines/1]).
+-export([current_state/0, count_codelines/1, list_files/1]).
 
 -export([start/0, stop/0]).
 
@@ -9,10 +9,12 @@
 -define(LINE_WITH_CODE_PATTERN, "^.*[a-zA-Z0-9]+.*%").
 -define(ERL_EXTENSION, ".erl").
 
+-record(state, {code_line_count=0}).
+
 %%% Public API
 
 start() ->
-    register(?SERVER, spawn(fun () -> loop(0) end)).
+    register(?SERVER, spawn(fun () -> loop(#state{}) end)).
 
 stop() ->
     rpc({stop, stopped}).
@@ -36,46 +38,39 @@ loop(State) ->
     receive
         {From, {list_dir, Dir}} ->
             From ! {self(), {noreply, list_dir}},
+            self() ! {self(), reset_state},
             spawn_link(fun() -> list_files(Dir) end),
             loop(State);
         {_From, {update, _File, Count}} ->
-            loop(State+Count);
+            loop(State#state{code_line_count=State#state.code_line_count+Count});
         {_From, reset_state} ->
-            loop(0);
+            loop(#state{});
         {From, current_state} ->
-            From ! {self(), {current_state, State}},
+            From ! {self(), {code_lines_found, State}},
             loop(State);
         {From, {stop, Reason}} ->
             From ! {self(), {exit, Reason}},
             exit({exit, Reason})
     end.
 
-list_files(Dir) ->
-    case filelib:is_dir(Dir) of
+list_files(Path) ->
+    case filelib:is_dir(Path) of
         true ->
-            ?SERVER ! {self(), reset_state},
-            {ok, Files} = file:list_dir(Dir),
-            FilePaths = [filename:join(Dir, FileName) || FileName <- Files], % join filename and basename e.g. basename is "." and filename is "t.erl" then fullname is "./t.erl"
-            spawn_link(fun() -> list_files(FilePaths, []) end);
+            {ok, Files} = file:list_dir(Path),
+            FilePaths = [filename:join(Path, FileName) || FileName <- Files],
+            [spawn_link(fun() -> list_files(NewPath) end) || NewPath <- FilePaths]; % create a new process for every file in given directory
         false ->
-            throw({error, Dir, not_a_dir}) % throw an error if given 'Dir' is not a directory
-    end.
-
-list_files([H | T], Acc) ->
-    list_files(T,
-        case filelib:is_dir(H) of
-            true ->
-                {ok, List} = file:list_dir(H),
-                FileNames = [filename:join(H, FileName) || FileName <- List],
-                spawn_link(fun() -> list_files(FileNames, Acc) end); % if dir is found then process it in a parallel process
-            false -> case filename:extension(H) =:= ?ERL_EXTENSION of
+            case filelib:is_file(Path) of
                 true ->
-                    [spawn_link(fun() -> read_file(H) end) | Acc]; % if .erl file found then process it in a parallel process
-                false -> Acc
+                    case filename:extension(Path) =:= ?ERL_EXTENSION of
+                        true ->
+                            spawn_link(fun() -> read_file(Path) end); % create a new process for every .erl file
+                        false -> not_erl_file
+                    end;
+                false ->
+                    error({not_a_dir, Path})
             end
-        end
-    );
-list_files([], Acc) -> Acc.
+    end.
 
 read_file(File) ->
     {ok, Device} = file:open(File, [read]),
