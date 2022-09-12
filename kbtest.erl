@@ -6,7 +6,7 @@
 
 -define(SERVER, ?MODULE).
 
--define(LINE_WITH_CODE_PATTERN, "^.*[a-zA-Z0-9]+.*%").
+-define(LINE_WITH_CODE_PATTERN, ".*[^.;,\n]+.*%").
 -define(ERL_EXTENSION, ".erl").
 
 -record(state, {code_line_count=0}).
@@ -14,7 +14,7 @@
 %%% Public API
 
 start() ->
-    register(?SERVER, spawn(fun () -> loop(#state{}) end)).
+    register(?SERVER, spawn(fun () -> loop(#state{}) end)). %
 
 stop() ->
     rpc({stop, stopped}).
@@ -64,7 +64,7 @@ list_files(Path) ->
                 true ->
                     case filename:extension(Path) =:= ?ERL_EXTENSION of
                         true ->
-                            spawn_link(fun() -> read_file(Path) end); % create a new process for every .erl file
+                            read_file(Path);
                         false -> not_erl_file
                     end;
                 false ->
