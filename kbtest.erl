@@ -14,7 +14,7 @@
 %%% Public API
 
 start() ->
-    register(?SERVER, spawn(fun () -> loop(#state{}) end)). %
+    register(?SERVER, spawn(fun () -> loop(#state{}) end)).
 
 stop() ->
     rpc({stop, stopped}).
@@ -39,7 +39,7 @@ loop(State) ->
         {From, {list_dir, Dir}} ->
             From ! {self(), {noreply, list_dir}},
             self() ! {self(), reset_state},
-            spawn_link(fun() -> list_files(Dir) end),
+            spawn_link(fun() -> check_dir(Dir) end),
             loop(State);
         {_From, {update, _File, Count}} ->
             loop(State#state{code_line_count=State#state.code_line_count+Count});
@@ -53,6 +53,14 @@ loop(State) ->
             exit({exit, Reason})
     end.
 
+check_dir(Dir) ->
+    case filelib:is_dir(Dir) of
+        true ->
+            list_files(Dir);
+        false ->
+            error({not_a_dir, Dir})
+    end.
+
 list_files(Path) ->
     case filelib:is_dir(Path) of
         true ->
@@ -60,15 +68,10 @@ list_files(Path) ->
             FilePaths = [filename:join(Path, FileName) || FileName <- Files],
             [spawn_link(fun() -> list_files(NewPath) end) || NewPath <- FilePaths]; % create a new process for every file in given directory
         false ->
-            case filelib:is_file(Path) of
+            case filename:extension(Path) =:= ?ERL_EXTENSION of
                 true ->
-                    case filename:extension(Path) =:= ?ERL_EXTENSION of
-                        true ->
-                            read_file(Path);
-                        false -> not_erl_file
-                    end;
-                false ->
-                    error({not_a_dir, Path})
+                    read_file(Path);
+                false -> not_erl_file
             end
     end.
 
