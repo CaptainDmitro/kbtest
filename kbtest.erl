@@ -9,6 +9,12 @@
 -define(LINE_WITH_CODE_PATTERN, ".*[^.;,\n]+.*%").
 -define(ERL_EXTENSION, ".erl").
 
+-ifdef(debug).
+-define(INFO(Msg, Path, Pid), io:format("~p ~p on ~p~n", [Msg, Path, Pid])).
+-else.
+-define(INFO(Msg, Path, Pid), void).
+-endif.
+
 -record(state, {code_line_count=0}).
 
 %%% Public API
@@ -54,6 +60,7 @@ loop(State) ->
     end.
 
 check_dir(Dir) ->
+    ?INFO("Checking", Dir, self()),
     case filelib:is_dir(Dir) of
         true ->
             list_files(Dir);
@@ -62,6 +69,7 @@ check_dir(Dir) ->
     end.
 
 list_files(Path) ->
+    ?INFO("Processing", Path, self()),
     case filelib:is_dir(Path) of
         true ->
             {ok, Files} = file:list_dir(Path),
@@ -76,6 +84,7 @@ list_files(Path) ->
     end.
 
 read_file(File) ->
+    ?INFO("Reading", File, self()),
     {ok, Device} = file:open(File, [read]),
     try read_line(Device, 0) of
         Result ->
